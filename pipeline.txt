@@ -1,53 +1,53 @@
 pipeline {
-    agent any
- 
-    tools {
-        ansible 'ansible'
-    }
- 
-    stages {
- 
-        stage('Checkout Ansible Repo') {
-            steps {
-                git branch: 'main',
-                    credentialsId: 'token-classic-id',
-                    url: 'https://github.com/keerthana05117-gif/Unix.git'
-            }
-        }
- 
-        stage('Checkout Website Repo') {
-            steps {
-                dir('web-src') {
-                    git branch: 'main',
-                        credentialsId: 'token-classic-id',
-                        url: 'https://github.com/keerthana05117-gif/Linux.git'
-                }
-            }
-        }
- 
-        stage('Deploy with Ansible') {
-            steps {
-                withCredentials([sshUserPrivateKey(
-                    credentialsId: 'github-ssh-key',
-                    keyFileVariable: 'SSH_KEY'
-                )]) {
- 
-                    echo 'Deploying to multiple web servers using Ansible from two repos...'
- 
-                    sh 'cp ${SSH_KEY} /tmp/ssh_key'
-                    sh 'chmod 600 /tmp/ssh_key'
- 
-                    ansiblePlaybook(
-                        playbook: 'deploy.yml',
-                        inventory: 'inventory/hosts.ini',
-                        colorized: true
-                    )
- 
-                    sh 'rm -f /tmp/ssh_key'
-                }
-            }
-        }
+  agent any
+
+  tools {
+    ansible 'ansible'   // Jenkins Global Tool Name for Ansible
+  }
+
+  environment {
+    // Avoid interactive prompt on first SSH
+    ANSIBLE_HOST_KEY_CHECKING = 'False'
+  }
+
+  stages {
+    stage('Checkout Ansible Repo') {
+      steps {
+        // This repo must contain deploy.yml and inventory/hosts.ini
+        git branch: 'main',
+            credentialsId: 'token-classic-id',
+            url: 'https://github.com/keerthana05117-gif/Unix.git'
+      }
     }
 
+    stage('Checkout Website Repo') {
+      steps {
+        // Website content (index.html, images, css, js) goes into web-src/
+        dir('web-src') {
+          git branch: 'main',
+              credentialsId: 'token-classic-id',
+              url: 'https://github.com/keerthana05117-gif/Linux.git'
+        }
+      }
+    }
+
+    stage('Deploy with Ansible') {
+      steps {
+        // ✅ Preferred: let the Ansible plugin pass the SSH key to all hosts
+        ansiblePlaybook(
+          playbook: 'deploy.yml',               // at workspace root (from Ansible repo)
+          inventory: 'inventory/hosts.ini',     // in the Ansible repo
+          credentialsId: 'github-ssh-key',      // <-- Jenkins SSH key for your target servers
+          colorized: true,
+          extras: '-vv'                         // more logging to troubleshoot
+        )
+      }
+    }
+  }
+
+  post {
+    always {
+      echo 'Pipeline finished.'
+    }
+  }
 }
-
