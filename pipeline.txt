@@ -39,7 +39,7 @@ pipeline {
  
                     ansiblePlaybook(
                         playbook: 'deploy.yml',
-                        inventory: 'inventory/hosts.ini',
+                        inventory: 'Inventory/hosts.ini',
                         colorized: true
                     )
  
@@ -50,3 +50,4 @@ pipeline {
     }
 }
  
+
