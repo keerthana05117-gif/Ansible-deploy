@@ -3,62 +3,38 @@
   hosts: webservers
   become: yes
   gather_facts: yes
-
-  vars:
-    web_root: /var/www/html
-    debian_owner: www-data
-    redhat_owner: apache
-
+ 
   tasks:
-    - name: Install Apache on Debian/Ubuntu
+ 
+    - name: Ensure Apache is installed (Ubuntu/Debian)
       ansible.builtin.apt:
         name: apache2
         state: present
         update_cache: yes
       when: ansible_os_family == "Debian"
-
-    - name: Install Apache (httpd) on Amazon/RHEL
+ 
+    - name: Ensure Apache (httpd) is installed (Amazon/RHEL)
       ansible.builtin.yum:
         name: httpd
         state: present
       when: ansible_os_family == "RedHat" or ansible_distribution == "Amazon"
-
-    - name: Ensure DocumentRoot exists
-      ansible.builtin.file:
-        path: "{{ web_root }}"
-        state: directory
-        mode: "0755"
-
-    - name: Set web user/group for Debian/Ubuntu
-      ansible.builtin.set_fact:
-        web_owner: "{{ debian_owner }}"
-        web_group: "{{ debian_owner }}"
-      when: ansible_os_family == "Debian"
-
-    - name: Set web user/group for Amazon/RHEL
-      ansible.builtin.set_fact:
-        web_owner: "{{ redhat_owner }}"
-        web_group: "{{ redhat_owner }}"
-      when: ansible_os_family == "RedHat" or ansible_distribution == "Amazon"
-
-    # 🚩 IMPORTANT: copy EVERYTHING from your checked-out web repo
-    - name: Copy static site (HTML/CSS/JS/images) from web-src
+ 
+    - name: Copy index.html from web-src to server
       ansible.builtin.copy:
-        src: "web-src/"               # controller-side path (Jenkins workspace)
-        dest: "{{ web_root }}/"
-        owner: "{{ web_owner }}"
-        group: "{{ web_group }}"
+        src: "web-src/index.html"
+        dest: "/var/www/html/index.html"
+        owner: www-data
+        group: www-data
         mode: "0644"
-      notify: Restart web server
-
-    # Optional: make sure service is enabled to start on boot
-    - name: Enable web server service
+ 
+    - name: Restart Apache on Debian/Ubuntu
       ansible.builtin.service:
-        name: "{{ 'apache2' if ansible_os_family == 'Debian' else 'httpd' }}"
-        enabled: yes
-
-  handlers:
-    - name: Restart web server
-      ansible.builtin.service:
-        name: "{{ 'apache2' if ansible_os_family == 'Debian' else 'httpd' }}"
+        name: apache2
         state: restarted
+      when: ansible_os_family == "Debian"
+ 
+    - name: Restart Apache on Amazon/RHEL
+      ansible.builtin.service:
+        name: httpd
+        state: restarted
+      when: ansible_os_family == "RedHat" or ansible_distribution == "Amazon"
