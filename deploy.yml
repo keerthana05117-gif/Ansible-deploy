@@ -3,38 +3,69 @@
   hosts: webservers
   become: yes
   gather_facts: yes
- 
+
+  vars:
+    web_root: /var/www/html
+
+  # Figure out the right service/user/group per OS
+  pre_tasks:
+    - name: Set web service and user/group for Debian/Ubuntu
+      ansible.builtin.set_fact:
+        web_service: apache2
+        web_user: www-data
+        web_group: www-data
+      when: ansible_os_family == "Debian"
+
+    - name: Set web service and user/group for RHEL/Amazon
+      ansible.builtin.set_fact:
+        web_service: httpd
+        web_user: apache
+        web_group: apache
+      when: ansible_os_family == "RedHat" or ansible_distribution == "Amazon"
+
   tasks:
- 
+
     - name: Ensure Apache is installed (Ubuntu/Debian)
       ansible.builtin.apt:
         name: apache2
         state: present
         update_cache: yes
       when: ansible_os_family == "Debian"
- 
+
     - name: Ensure Apache (httpd) is installed (Amazon/RHEL)
       ansible.builtin.yum:
         name: httpd
         state: present
       when: ansible_os_family == "RedHat" or ansible_distribution == "Amazon"
- 
-    - name: Copy index.html from web-src to server
+
+    - name: Ensure document root exists
+      ansible.builtin.file:
+        path: "{{ web_root }}"
+        state: directory
+        owner: "{{ web_user }}"
+        group: "{{ web_group }}"
+        mode: "0755"
+
+    # ⬇️ Key change: copy the entire web-src directory so images are included
+    - name: Copy website files (HTML + images)
       ansible.builtin.copy:
-        src: "web-src/index.html"
-        dest: "/var/www/html/index.html"
-        owner: www-data
-        group: www-data
+        src: "web-src/"
+        dest: "{{ web_root }}/"
+        owner: "{{ web_user }}"
+        group: "{{ web_group }}"
         mode: "0644"
- 
-    - name: Restart Apache on Debian/Ubuntu
-      ansible.builtin.service:
-        name: apache2
-        state: restarted
-      when: ansible_os_family == "Debian"
- 
-    - name: Restart Apache on Amazon/RHEL
-      ansible.builtin.service:
-        name: httpd
-        state: restarted
+        directory_mode: "0755"
+      notify: Restart web server
+
+    # Optional: if SELinux is enforcing on RHEL/Amazon, ensure proper context
+    - name: Restore SELinux context on web root (RHEL/Amazon only)
+      ansible.builtin.command: "restorecon -Rvv {{ web_root }}"
       when: ansible_os_family == "RedHat" or ansible_distribution == "Amazon"
+      changed_when: false
+      failed_when: false
+
+  handlers:
+    - name: Restart web server
+      ansible.builtin.service:
+        name: "{{ web_service }}"
+        state: restarted
