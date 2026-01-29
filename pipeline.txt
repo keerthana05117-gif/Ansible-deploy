@@ -19,7 +19,7 @@ pipeline {
             steps {
                 dir('web-src') {
                     git branch: 'main',
-                        credentialsId: 'github-ssh-key',
+                        credentialsId: 'token-classic-id',
                         url: 'https://github.com/keerthana05117-gif/Linux.git'
                 }
             }
@@ -50,3 +50,4 @@ pipeline {
     }
 
 }
+
