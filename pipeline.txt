@@ -5,7 +5,7 @@ pipeline {
   parameters {
     string(
       name: 'WEB_REPO_URL',
-      defaultValue: 'https://github.com/Pugazh529/web-page1.git',
+      defaultValue: 'https://github.com/keerthana05117-gif/Web-page.git',
       description: 'Repo with index.html'
     )
     string(
@@ -15,7 +15,7 @@ pipeline {
     )
     string(
       name: 'ANSIBLE_REPO_URL',
-      defaultValue: 'https://github.com/Pugazh529/ansible-deploy.git',
+      defaultValue: 'https://github.com/keerthana05117-gif/Ansible-deploy.git',
       description: 'Repo with site.yml and inventory'
     )
     string(
@@ -108,3 +108,4 @@ curl -sS --max-time ${env.CURL_MAX_TIME} http://${targetHost} | head -n 30 || tr
     }
   }
 }
+
