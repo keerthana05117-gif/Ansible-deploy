@@ -41,12 +41,12 @@ pipeline {
       steps {
         dir('web') {
           git branch: params.WEB_REPO_BRANCH,
-              credentialsId: 'git-id',     // remove if both repos are fully public
+              credentialsId: 'github-ssh-key',     // remove if both repos are fully public
               url: params.WEB_REPO_URL
         }
         dir('ansible') {
           git branch: params.ANSIBLE_REPO_BRANCH,
-              credentialsId: 'git-id',     // remove if public
+              credentialsId: 'github-ssh-key',     // remove if public
               url: params.ANSIBLE_REPO_URL
         }
       }
@@ -54,7 +54,7 @@ pipeline {
  
     stage('Run Ansible (Apache + Deploy)') {
       steps {
-        withCredentials([sshUserPrivateKey(credentialsId: 'vm-id', keyFileVariable: 'PK')]) {
+        withCredentials([sshUserPrivateKey(credentialsId: 'token-classic-id', keyFileVariable: 'PK')]) {
           sh '''#!/usr/bin/env bash
 set -Eeuo pipefail
  
@@ -108,4 +108,5 @@ curl -sS --max-time ${env.CURL_MAX_TIME} http://${targetHost} | head -n 30 || tr
     }
   }
 }
+
 
