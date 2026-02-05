@@ -1,53 +1,110 @@
 pipeline {
-    agent any
+  agent any
+  options { timestamps() }
  
-    tools {
-        ansible 'ansible'
+  parameters {
+    string(
+      name: 'WEB_REPO_URL',
+      defaultValue: 'https://github.com/Pugazh529/web-page1.git',
+      description: 'Repo with index.html'
+    )
+    string(
+      name: 'WEB_REPO_BRANCH',
+      defaultValue: 'main',
+      description: 'Branch for web repo'
+    )
+    string(
+      name: 'ANSIBLE_REPO_URL',
+      defaultValue: 'https://github.com/Pugazh529/ansible-deploy.git',
+      description: 'Repo with site.yml and inventory'
+    )
+    string(
+      name: 'ANSIBLE_REPO_BRANCH',
+      defaultValue: 'main',
+      description: 'Branch for ansible repo'
+    )
+  }
+ 
+  environment {
+    // Keep inventory path in one place
+    INVENTORY_FILE = 'ansible/inventory/hosts.ini'
+ 
+    // Avoid interactive host key prompt
+    ANSIBLE_HOST_KEY_CHECKING = 'False'
+ 
+    // Curl timeout for smoke test
+    CURL_MAX_TIME = '10'
+  }
+ 
+  stages {
+    stage('Checkout Repos') {
+      steps {
+        dir('web') {
+          git branch: params.WEB_REPO_BRANCH,
+              credentialsId: 'git-id',     // remove if both repos are fully public
+              url: params.WEB_REPO_URL
+        }
+        dir('ansible') {
+          git branch: params.ANSIBLE_REPO_BRANCH,
+              credentialsId: 'git-id',     // remove if public
+              url: params.ANSIBLE_REPO_URL
+        }
+      }
     }
  
-    stages {
+    stage('Run Ansible (Apache + Deploy)') {
+      steps {
+        withCredentials([sshUserPrivateKey(credentialsId: 'vm-id', keyFileVariable: 'PK')]) {
+          sh '''#!/usr/bin/env bash
+set -Eeuo pipefail
  
-        stage('Checkout Ansible Repo') {
-            steps {
-                git branch: 'main',
-                    credentialsId: 'token-classic-id',
-                    url: 'https://github.com/keerthana05117-gif/Unix.git'
-            }
+echo "Inventory (${INVENTORY_FILE}):"
+cat "${INVENTORY_FILE}"
+ 
+# Use the Jenkins-provided private key for Ansible
+export ANSIBLE_PRIVATE_KEY_FILE="${PK}"
+export ANSIBLE_HOST_KEY_CHECKING=False
+ 
+# Run your playbook against the new inventory path
+ansible-playbook -i "${INVENTORY_FILE}" ansible/site.yml \
+  --extra-vars "web_src=${WORKSPACE}/web/index.html"
+'''
         }
- 
-        stage('Checkout Website Repo') {
-            steps {
-                dir('web-src') {
-                    git branch: 'main',
-                        credentialsId: 'token-classic-id',
-                        url: 'https://github.com/keerthana05117-gif/Linux.git'
-                }
-            }
-        }
- 
-        stage('Deploy with Ansible') {
-            steps {
-                withCredentials([sshUserPrivateKey(
-                    credentialsId: 'github-ssh-key',
-                    keyFileVariable: 'SSH_KEY'
-                )]) {
- 
-                    echo 'Deploying to multiple web servers using Ansible from two repos...'
- 
-                    sh 'cp ${SSH_KEY} /tmp/ssh_key'
-                    sh 'chmod 600 /tmp/ssh_key'
- 
-                    ansiblePlaybook(
-                        playbook: 'deploy.yml',
-                        inventory: 'Inventory/hosts.ini',
-                        colorized: true
-                    )
- 
-                    sh 'rm -f /tmp/ssh_key'
-                }
-            }
-        }
+      }
     }
+ 
+    stage('Smoke Test') {
+      steps {
+        script {
+          // Use Ansible to list hosts (plain text) and grab the first host.
+          // Run under bash because /bin/sh (dash) doesn't support 'pipefail'.
+          def targetHost = sh(
+            returnStdout: true,
+            script: '''#!/usr/bin/env bash
+set -Eeuo pipefail
+ansible -i "${INVENTORY_FILE}" all --list-hosts 2>/dev/null \
+  | awk 'NR>1 {print $1; exit}'
+''').trim()
+ 
+          if (!targetHost) {
+            error "Could not determine a target host from ${env.INVENTORY_FILE}"
+          }
+ 
+          // Quick content check from the first host
+          sh """#!/usr/bin/env bash
+set -Eeuo pipefail
+echo 'curl http://${targetHost} ...'
+curl -sS --max-time ${env.CURL_MAX_TIME} http://${targetHost} | head -n 30 || true
+"""
+        }
+      }
+    }
+  }
+ 
+  post {
+    always {
+      // Archive the inventory file actually used in this run
+      archiveArtifacts artifacts: 'ansible/inventory/hosts.ini', allowEmptyArchive: true
+    }
+  }
 }
- 
-
